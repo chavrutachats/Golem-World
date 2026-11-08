@@ -1,0 +1,27 @@
+{
+ "language": "en",
+ "title": "Genesis",
+ "actualLanguage": "pt",
+ "isPrimary": false,
+ "heTitle": "בראשית",
+ "categories": [
+  "Tanakh",
+  "Torah"
+ ],
+ "sectionNames": [
+  "Chapter",
+  "Verse"
+ ],
+ "versionTitle": "Versão NC de teste [pt]",
+ "versionSource": "fixture sintética de teste",
+ "license": "CC-BY-NC",
+ "text": [
+  [
+   "No princípio, D'us criou os céus e a terra.",
+   "A terra era sem forma e vazia; havia trevas sobre a face do abismo, e o espírito de D'us pairava sobre a face das águas.",
+   "D'us disse: Haja luz. E houve luz.",
+   "D'us viu que a luz era boa, e D'us separou a luz das trevas.",
+   "D'us chamou à luz Dia, e às trevas chamou Noite. Houve tarde e houve manhã: um dia."
+  ]
+ ]
+}

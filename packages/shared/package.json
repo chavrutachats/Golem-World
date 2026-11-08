@@ -1,0 +1,29 @@
+{
+  "name": "@trivia/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tipos, schemas Zod e regras compartilhadas entre api, pipeline e app mobile.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "calibrate-puzzle": "tsx scripts/calibrate-puzzle.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,897 @@
+// =============================================================================
+// trivia-torah — modelo de dados
+//
+// Três domínios:
+//   1. Conteúdo   — passagens do Sefaria, lotes de geração, perguntas, revisões.
+//   2. Jogo       — usuários, partidas, turnos, giros da roleta, perguntas servidas.
+//   3. Qualidade  — denúncias dos jogadores e estatísticas para recalibrar dificuldade.
+//
+// Convenção: valores de enum em minúsculas e iguais aos ids de @trivia/shared,
+// para que o tipo gerado pelo Prisma e o tipo compartilhado sejam o mesmo texto.
+// =============================================================================
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum Category {
+  torah
+  neviim_ketuvim
+  mishnah
+  talmud
+  halakhah
+  midrash_aggadah
+}
+
+/// Resultado de um giro do sevivon: uma categoria, a Coroa ou o Prêmio (Fase 12).
+enum WheelSlice {
+  torah
+  neviim_ketuvim
+  mishnah
+  talmud
+  halakhah
+  midrash_aggadah
+  crown
+  prize
+}
+
+enum Difficulty {
+  easy
+  medium
+  hard
+  expert
+}
+
+enum UserRole {
+  player
+  reviewer
+  admin
+}
+
+enum PassageStatus {
+  pending   // aguardando geração
+  in_batch  // enviada num lote assíncrono (Batch API) ainda não coletado
+  generated // gerou ao menos uma pergunta
+  skipped   // o modelo recusou (trecho não sustenta pergunta justa)
+  failed    // erro técnico; pode ser reprocessada
+}
+
+enum BatchStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+enum QuestionStatus {
+  pending_review // passou nas checagens automáticas, aguarda revisão humana
+  approved       // pode ser servida no jogo
+  rejected       // reprovada (automática ou humanamente)
+  retired        // tirada de circulação depois de aprovada (ex.: denúncias)
+}
+
+enum ReviewDecision {
+  approve
+  reject
+}
+
+enum ReportReason {
+  incorrect
+  ambiguous
+  disrespectful
+  typo
+  other
+}
+
+enum GameMode {
+  solo
+  random
+  friend
+}
+
+enum GameStatus {
+  waiting_opponent
+  active
+  finished
+  abandoned
+}
+
+/// Trilhas do Golem World (Fase 7).
+enum JourneyTrack {
+  torah
+  mishnah
+  talmud
+  midrash
+  commentators
+  kabbalah
+  mitzvot
+}
+
+/// De onde veio a pergunta: do motor de IA (gerador + verificador) ou de um molde
+/// determinístico montado na hora a partir do texto do Sefaria.
+enum QuestionOrigin {
+  llm
+  template
+  /// Banco de perguntas (Fase 12): montadas pelo pipeline a partir do Sefaria, já nos três idiomas.
+  bank
+}
+
+enum JourneyRunStatus {
+  active
+  completed
+  failed
+  abandoned
+}
+
+enum PlaySource {
+  wheel          // pergunta normal após giro
+  crown_challenge // disputa de selo após encher a Coroa
+}
+
+// -----------------------------------------------------------------------------
+// 1. Conteúdo
+// -----------------------------------------------------------------------------
+
+/// Unidade de texto entregue ao LLM: um ou poucos segmentos de um livro do Sefaria,
+/// com as versões em hebraico, inglês e/ou português e a licença de cada uma.
+model SourcePassage {
+  id             String        @id @default(uuid()) @db.Uuid
+  /// Referência Sefaria legível, ex.: "Genesis 22:1-5", "Berakhot 2a:1-3".
+  ref            String        @unique @db.VarChar(160)
+  category       Category
+  /// Título do livro no Sefaria, ex.: "Genesis", "Mishnah Berakhot".
+  bookTitle      String        @db.VarChar(160)
+  /// Caminho de categorias no Sefaria, ex.: {Tanakh,Torah}.
+  sefariaPath    String[]
+  /// Ordem da passagem dentro do livro (0, 1, 2…), para processar e listar na ordem do texto.
+  sequence       Int           @default(0)
+  /// Primeira seção (capítulo, daf, siman) coberta, como aparece na referência: "22", "2a".
+  section        String        @default("") @db.VarChar(20)
+  heText         String?
+  heVersionTitle String?       @db.VarChar(300)
+  heLicense      String?       @db.VarChar(80)
+  enText         String?
+  enVersionTitle String?       @db.VarChar(300)
+  enLicense      String?       @db.VarChar(80)
+  /// Tradução em português do próprio Sefaria (quando houver versão com licença aceita).
+  ptText         String?
+  ptVersionTitle String?       @db.VarChar(300)
+  ptLicense      String?       @db.VarChar(80)
+  /// Segmentos individuais: [{ ref, he, en, pt }]. Os campos *Text são a junção destes.
+  segments       Json?
+  /// Comentários clássicos anexados ao trecho (Rashi etc.): [{ ref, author, text, license }].
+  commentary     Json?
+  /// sha256 do conteúdo; muda se o Sefaria corrigir o texto.
+  contentHash    String        @db.VarChar(64)
+  wordCount      Int
+  status         PassageStatus @default(pending)
+  /// Último lote (GenerationBatch) que processou esta passagem.
+  lastBatchId    String?       @db.Uuid
+  lastError      String?
+  generatedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  questions Question[]
+
+  @@index([category, status])
+  @@index([bookTitle, sequence])
+}
+
+/// Uma execução do gerador sobre um conjunto de passagens.
+model GenerationBatch {
+  id              String      @id @default(uuid()) @db.Uuid
+  provider        String      @db.VarChar(40)
+  generatorModel  String      @db.VarChar(120)
+  verifierModel   String?     @db.VarChar(120)
+  /// Versão do prompt (ex.: "generator@1.0.0"), para rastrear qual regra gerou cada pergunta.
+  promptVersion   String      @db.VarChar(40)
+  /// Id do lote na Batch API do provedor, quando usada.
+  providerBatchId String?     @db.VarChar(200)
+  status          BatchStatus @default(queued)
+  /// Contadores: passagens enviadas, perguntas geradas, aprovadas, reprovadas por motivo…
+  stats           Json?
+  error           String?
+  createdAt       DateTime    @default(now())
+  completedAt     DateTime?
+
+  questions Question[]
+
+  @@index([status])
+}
+
+model Question {
+  id                  String         @id @default(uuid()) @db.Uuid
+  /// Passagem de origem (perguntas do motor de IA sobre os livros da roleta).
+  passageId           String?        @db.Uuid
+  /// Texto de estudo de origem (perguntas das trilhas e dos moldes).
+  studyTextId         String?        @db.Uuid
+  batchId             String?        @db.Uuid
+  /// Idioma em que a pergunta foi escrita ou montada: pt, en ou he (Fase 8).
+  locale              String         @default("pt") @db.VarChar(10)
+  /// Categoria da roleta; nula para perguntas só do Golem World (comentaristas, Cabalá).
+  category            Category?
+  origin              QuestionOrigin @default(llm)
+  /// Molde usado (só origin = template), ex.: "complete-verse".
+  template            String?        @db.VarChar(40)
+  /// Trilha do Golem World e parashiot a que a pergunta pertence.
+  track               JourneyTrack?
+  parashot            String[]       @default([])
+  /// Trecho mostrado acima da pergunta (um comentário, uma mishná…).
+  contextLabel        String?        @db.VarChar(160)
+  contextText         String?        @db.VarChar(2000)
+  contextLanguage     String?        @db.VarChar(2)
+  /// Versão e licença do texto citado (perguntas de molde; as do motor usam a passagem).
+  versionTitle        String?        @db.VarChar(300)
+  license             String?        @db.VarChar(80)
+  /// O trecho citado é tradução automática (Fase 8), não uma versão publicada.
+  machineTranslated   Boolean        @default(false)
+  text                String         @db.VarChar(300)
+  /// As 4 alternativas na ordem canônica; a ordem mostrada a cada jogador fica em QuestionPlay.optionOrder.
+  options             String[]
+  correctIndex        Int            @db.SmallInt
+  explanation         String         @db.VarChar(600)
+  sourceRef           String         @db.VarChar(160)
+  evidenceQuote       String         @db.VarChar(400)
+  evidenceLanguage    String         @db.VarChar(2)
+  /// Rótulo original dado pela IA (nunca muda, para auditoria).
+  aiDifficulty        Difficulty
+  /// Nível em uso no jogo (começa igual ao da IA e é recalibrado pelo desempenho real).
+  difficulty          Difficulty
+  difficultyRationale String?        @db.VarChar(400)
+  status              QuestionStatus @default(pending_review)
+  /// Resultado das checagens determinísticas (avisos) e do verificador às cegas.
+  validationReport    Json?
+  verifierConfidence  Float?
+  /// sha256 de dedupeFingerprint(pergunta, resposta) — evita perguntas repetidas.
+  dedupeKey           String         @unique @db.VarChar(64)
+  timesServed         Int            @default(0)
+  timesCorrect        Int            @default(0)
+  lastCalibratedAt    DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  passage        SourcePassage?   @relation(fields: [passageId], references: [id], onDelete: Restrict)
+  studyText      StudyText?       @relation(fields: [studyTextId], references: [id], onDelete: Restrict)
+  batch          GenerationBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  reviews        QuestionReview[]
+  reports        QuestionReport[]
+  plays          QuestionPlay[]
+  journeyAnswers JourneyAnswer[]
+  translations   QuestionTranslation[]
+
+  /// Índice usado na seleção de perguntas durante o jogo.
+  @@index([status, category, difficulty])
+  @@index([status, locale, category])
+  @@index([passageId])
+  @@index([studyTextId])
+  @@index([track, status, difficulty])
+  @@index([parashot], type: Gin)
+}
+
+/// Um segmento de texto do Sefaria usado pelas trilhas do Golem World: um versículo
+/// da Torá, um comentário de Rashi, uma mishná, um trecho do Zohar… `anchors` são os
+/// versículos da Torá a que ele se liga (pela estrutura do comentário ou pelas conexões
+/// do Sefaria) e `parashot`, as parashiot desses versículos.
+model StudyText {
+  id             String       @id @default(uuid()) @db.Uuid
+  ref            String       @unique @db.VarChar(200)
+  track          JourneyTrack
+  bookTitle      String       @db.VarChar(200)
+  /// Comentarista (só na trilha de comentaristas), ex.: "Rashi".
+  author         String?      @db.VarChar(80)
+  sequence       Int
+  heText         String?
+  heVersionTitle String?      @db.VarChar(300)
+  heLicense      String?      @db.VarChar(80)
+  enText         String?
+  enVersionTitle String?      @db.VarChar(300)
+  enLicense      String?      @db.VarChar(80)
+  ptText         String?
+  ptVersionTitle String?      @db.VarChar(300)
+  ptLicense      String?      @db.VarChar(80)
+  anchors        String[]
+  parashot       String[]
+  wordCount      Int
+  contentHash    String       @db.VarChar(64)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  questions    Question[]
+  translations SegmentTranslation[]
+
+  @@index([track, bookTitle, sequence])
+  @@index([parashot], type: Gin)
+}
+
+model QuestionReview {
+  id         String         @id @default(uuid()) @db.Uuid
+  questionId String         @db.Uuid
+  /// Revisor que decidiu (nulo em decisões antigas, da época da chave de admin, ou do seed de demonstração).
+  reviewerId String?        @db.Uuid
+  decision   ReviewDecision
+  notes      String?        @db.VarChar(1000)
+  /// Diferença entre a versão gerada e a editada pelo revisor, quando houver.
+  edits      Json?
+  createdAt  DateTime       @default(now())
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  reviewer User?    @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([questionId])
+}
+
+// -----------------------------------------------------------------------------
+// 2. Usuários e jogo
+// -----------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  displayName  String   @db.VarChar(40)
+  email        String?  @unique @db.VarChar(254)
+  /// Hash scrypt (formato scrypt$N$r$p$sal$hash). Nulo para convidados.
+  passwordHash   String?
+  isGuest        Boolean   @default(true)
+  role           UserRole  @default(player)
+  totalPoints    Int       @default(0)
+  /// Golem World: moedas (só para itens) e habilidade da dificuldade dinâmica (0 a 3).
+  coins          Int       @default(0)
+  journeySkill   Float     @default(0.6)
+  /// Roleta: vidas e início do relógio de recarga.
+  lives          Int       @default(5) @db.SmallInt
+  livesUpdatedAt DateTime  @default(now())
+  /// Adversário controlado pelo servidor.
+  isBot          Boolean   @default(false)
+  /// Idioma escolhido (pt, en, he): interface e conteúdo das fases e partidas.
+  locale         String    @default("pt") @db.VarChar(2)
+  /// Fase 9: shekels (moeda comprada; as moedas de sabedoria são `coins`).
+  shekels        Int       @default(0)
+  /// Comprou "Sem anúncios": sem anúncio obrigatório (os com prêmio continuam).
+  adFree         Boolean   @default(false)
+  /// Ritmo do anúncio obrigatório: pausas desde o último, meta sorteada (3 a 5) e quando foi.
+  adBreaks       Int       @default(0) @db.SmallInt
+  adBreakTarget  Int       @default(4) @db.SmallInt
+  lastAdAt       DateTime?
+  /// Vai no token de acesso. Aumentar este número derruba na hora todos os tokens já
+  /// emitidos (troca de senha, "sair de todos os aparelhos", exclusão, reuso de token).
+  sessionVersion Int       @default(0)
+  /// Quando a conta passou a ter e-mail e senha (cadastro ou promoção de convidado).
+  /// A confiança para denúncias conta a partir daqui, não da criação do convidado.
+  registeredAt   DateTime?
+  /// Conta excluída a pedido do usuário: os dados pessoais são apagados e a linha
+  /// fica anonimizada para não quebrar o histórico das partidas dos adversários.
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  refreshTokens   RefreshToken[]
+  gameSeats       GamePlayer[]
+  plays           QuestionPlay[]
+  reviews         QuestionReview[]
+  reports         QuestionReport[] @relation("ReportAuthor")
+  resolvedReports QuestionReport[] @relation("ReportResolver")
+  journeyProgress JourneyProgress[]
+  journeyRuns     JourneyRun[]
+  items           UserItem[]
+  walletEntries   WalletEntry[]
+  purchases       StorePurchase[]
+  boosts          UserBoost[]
+  rewardTickets   RewardTicket[]
+  identities      UserIdentity[]
+  puzzleRuns      PuzzleRun[]
+
+  @@index([totalPoints(sort: Desc)])
+  @@index([isGuest, createdAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  /// Guardamos só o hash do token.
+  tokenHash String    @unique @db.VarChar(64)
+  expiresAt DateTime
+  revokedAt DateTime?
+  /// Por que foi revogado: rotated (girou na renovação), grace (girou e já foi reemitido uma
+  /// vez na tolerância), logout, limit (sessões demais), all (sair de todos / troca de senha /
+  /// exclusão). Só o reuso de um "rotated" ou "grace" indica vazamento.
+  revokedReason String?   @db.VarChar(20)
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Game {
+  id                  String     @id @default(uuid()) @db.Uuid
+  mode                GameMode
+  status              GameStatus @default(active)
+  roundNumber         Int        @default(1)
+  maxRounds           Int        @default(25)
+  /// GamePlayer da vez (nulo enquanto aguarda adversário ou após o fim).
+  currentPlayerId     String?    @db.Uuid
+  winnerPlayerId      String?    @db.Uuid
+  /// Código de 6 caracteres para convidar um amigo.
+  inviteCode          String?    @unique @db.VarChar(6)
+  /// Prazo para o jogador da vez agir (partidas assíncronas).
+  turnDeadlineAt      DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  finishedAt          DateTime?
+
+  players GamePlayer[]
+  turns   Turn[]
+
+  @@index([status, mode])
+}
+
+model GamePlayer {
+  id            String     @id @default(uuid()) @db.Uuid
+  gameId        String     @db.Uuid
+  userId        String     @db.Uuid
+  /// 0 = quem criou a partida, 1 = adversário.
+  seat          Int        @db.SmallInt
+  seals         Category[]
+  /// Acertos seguidos acumulados na Coroa (0 até GAME_RULES.crownStreak).
+  crownProgress Int        @default(0) @db.SmallInt
+  score         Int        @default(0)
+  correctCount  Int        @default(0)
+  wrongCount    Int        @default(0)
+  joinedAt      DateTime   @default(now())
+
+  game  Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  turns Turn[]
+  plays QuestionPlay[]
+
+  @@unique([gameId, userId])
+  @@unique([gameId, seat])
+  @@index([userId])
+}
+
+/// Uma vez de um jogador: começa quando recebe a vez e termina no primeiro erro
+/// (ou ao fim da partida).
+model Turn {
+  id          String    @id @default(uuid()) @db.Uuid
+  gameId      String    @db.Uuid
+  playerId    String    @db.Uuid
+  roundNumber Int
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+
+  game   Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player GamePlayer     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  spins  Spin[]
+  plays  QuestionPlay[]
+
+  @@index([gameId, roundNumber])
+}
+
+/// Giro da roleta sorteado NO SERVIDOR. Cada giro só pode ser usado uma vez,
+/// o que impede o app de escolher a categoria.
+model Spin {
+  id         String     @id @default(uuid()) @db.Uuid
+  turnId     String     @db.Uuid
+  result     WheelSlice
+  createdAt  DateTime   @default(now())
+  consumedAt DateTime?
+
+  turn Turn          @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  play QuestionPlay?
+
+  @@index([turnId])
+}
+
+/// Uma pergunta servida a um jogador, com o prazo e a resposta dada.
+model QuestionPlay {
+  id            String     @id @default(uuid()) @db.Uuid
+  turnId        String     @db.Uuid
+  spinId        String?    @unique @db.Uuid
+  playerId      String     @db.Uuid
+  /// Redundante com playerId → userId, mas evita joins no anti-repetição e no ranking.
+  userId        String     @db.Uuid
+  questionId    String     @db.Uuid
+  category      Category
+  difficulty    Difficulty
+  source        PlaySource @default(wheel)
+  /// Permutação mostrada ao jogador: optionOrder[posição na tela] = índice canônico.
+  optionOrder   Int[]      @db.SmallInt
+  servedAt      DateTime   @default(now())
+  deadlineAt    DateTime
+  answeredAt    DateTime?
+  /// Índice CANÔNICO escolhido (nulo = tempo esgotado ou ainda sem resposta).
+  chosenIndex   Int?       @db.SmallInt
+  isCorrect     Boolean?
+  pointsAwarded Int        @default(0)
+
+  turn     Turn        @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  spin     Spin?       @relation(fields: [spinId], references: [id], onDelete: SetNull)
+  player   GamePlayer  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  reports  QuestionReport[]
+
+  /// Anti-repetição: "este usuário já viu esta pergunta?"
+  @@index([userId, questionId])
+  /// Ranking semanal: soma de pontos por período.
+  @@index([answeredAt, userId])
+  @@index([questionId])
+}
+
+// -----------------------------------------------------------------------------
+// 3. Qualidade
+// -----------------------------------------------------------------------------
+
+/// Denúncia feita por um jogador após responder (pergunta errada, ambígua, desrespeitosa…).
+model QuestionReport {
+  id         String       @id @default(uuid()) @db.Uuid
+  questionId String       @db.Uuid
+  userId     String       @db.Uuid
+  playId     String?      @db.Uuid
+  reason     ReportReason
+  comment    String?      @db.VarChar(500)
+  /// Denunciante confiável no momento da denúncia (conta cadastrada, com idade e
+  /// histórico mínimos). Só denúncias confiáveis tiram perguntas de circulação sozinhas.
+  trusted              Boolean   @default(false)
+  /// Esta denúncia fez a pergunta sair de circulação automaticamente.
+  triggeredRetirement  Boolean   @default(false)
+  createdAt  DateTime     @default(now())
+  resolvedAt DateTime?
+  /// Revisor que resolveu e o que decidiu (dismiss, retire, restore).
+  resolvedById String?    @db.Uuid
+  resolution   String?    @db.VarChar(20)
+
+  question   Question      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user       User          @relation("ReportAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy User?         @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  play       QuestionPlay? @relation(fields: [playId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, questionId])
+  @@index([questionId, resolvedAt])
+  /// Limite diário de denúncias por jogador e disjuntor de retiradas automáticas.
+  @@index([userId, createdAt])
+  @@index([triggeredRetirement, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Golem World (Fase 7)
+// ---------------------------------------------------------------------------
+
+/// Melhor resultado do jogador em cada fase do mapa.
+model JourneyProgress {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  /// "bereshit:torah", "bereshit:kabbalah", "beit-midrash:Genesis"…
+  nodeId           String   @db.VarChar(60)
+  bestStars        Int      @db.SmallInt
+  completions      Int      @default(1)
+  firstCompletedAt DateTime @default(now())
+  lastCompletedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, nodeId])
+}
+
+/// Uma tentativa de fase: corações, obstáculo atual, moedas da tentativa e poderes restantes.
+model JourneyRun {
+  id            String           @id @default(uuid()) @db.Uuid
+  userId        String           @db.Uuid
+  nodeId        String           @db.VarChar(60)
+  status        JourneyRunStatus @default(active)
+  hearts        Int              @db.SmallInt
+  maxHearts     Int              @db.SmallInt
+  heartsLost    Int              @default(0) @db.SmallInt
+  obstacleIndex Int              @default(0) @db.SmallInt
+  obstacleCount Int              @db.SmallInt
+  coins         Int              @default(0)
+  timeLimitSec  Int              @db.SmallInt
+  coinBonusPct  Int              @default(0) @db.SmallInt
+  /// Erros perdoados que ainda restam (pena do sofer).
+  forgiveLeft   Int              @default(0) @db.SmallInt
+  eliminateLeft Int              @default(0) @db.SmallInt
+  skipLeft      Int              @default(0) @db.SmallInt
+  hintLeft      Int              @default(0) @db.SmallInt
+  /// Voltou com 1 coração depois de perder o último (anúncio com prêmio, uma vez por fase).
+  revivedAt     DateTime?
+  startedAt     DateTime         @default(now())
+  endedAt       DateTime?
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers JourneyAnswer[]
+
+  @@index([userId, status])
+}
+
+/// Uma pergunta servida numa fase, com o prazo e a resposta.
+model JourneyAnswer {
+  id            String     @id @default(uuid()) @db.Uuid
+  runId         String     @db.Uuid
+  userId        String     @db.Uuid
+  questionId    String     @db.Uuid
+  obstacleIndex Int        @db.SmallInt
+  difficulty    Difficulty
+  /// Permutação mostrada: optionOrder[posição na tela] = índice canônico.
+  optionOrder   Int[]      @db.SmallInt
+  /// Posições (na tela) eliminadas por um item.
+  eliminated    Int[]      @default([]) @db.SmallInt
+  hintUsed      Boolean    @default(false)
+  /// Ganhou segundos a mais com uma ajuda da mochila.
+  timeAdded     Boolean    @default(false)
+  servedAt      DateTime   @default(now())
+  deadlineAt    DateTime
+  answeredAt    DateTime?
+  chosenIndex   Int?       @db.SmallInt
+  isCorrect     Boolean?
+  /// perfect, pass, slow, wrong, timeout ou skipped.
+  outcome       String?    @db.VarChar(10)
+  coins         Int        @default(0)
+
+  run      JourneyRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  question Question   @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@index([runId])
+  @@index([userId, questionId])
+  @@index([questionId])
+}
+
+/// Itens do Armário do Golem.
+model UserItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  itemId     String   @db.VarChar(40)
+  equipped   Boolean  @default(false)
+  acquiredAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+}
+
+// ---------------------------------------------------------------------------
+// Idiomas (Fase 8)
+// ---------------------------------------------------------------------------
+
+/// Tradução automática de um texto de estudo para pt ou en, feita a partir do original
+/// (com a tradução inglesa do Sefaria como apoio, quando houver). Feita uma vez por
+/// trecho e reaproveitada por todos os jogadores; refeita se o texto mudar no Sefaria.
+model SegmentTranslation {
+  id            String   @id @default(uuid()) @db.Uuid
+  studyTextId   String   @db.Uuid
+  locale        String   @db.VarChar(2)
+  text          String
+  /// StudyText.contentHash no momento da tradução (diferente = tradução velha).
+  sourceHash    String   @db.VarChar(64)
+  /// Licença herdada da fonte (CC-BY-SA continua CC-BY-SA na tradução).
+  license       String?  @db.VarChar(80)
+  provider      String   @db.VarChar(40)
+  model         String   @db.VarChar(120)
+  promptVersion String   @db.VarChar(40)
+  /// machine (automática) ou reviewed (conferida por um revisor).
+  /// machine (tradução automática) ou bank (escrita junto com a pergunta, no banco).
+  status        String   @default("machine") @db.VarChar(10)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  studyText StudyText @relation(fields: [studyTextId], references: [id], onDelete: Cascade)
+
+  @@unique([studyTextId, locale])
+  @@index([locale])
+}
+
+/// Tradução de uma pergunta do motor de IA (escrita em português) para en ou he.
+model QuestionTranslation {
+  id            String   @id @default(uuid()) @db.Uuid
+  questionId    String   @db.Uuid
+  locale        String   @db.VarChar(2)
+  text          String   @db.VarChar(300)
+  options       String[]
+  explanation   String   @db.VarChar(600)
+  evidenceQuote String   @db.VarChar(400)
+  contextLabel  String?  @db.VarChar(160)
+  contextText   String?  @db.VarChar(2000)
+  /// Banco (Fase 12): idioma da citação e do trecho (o original hebraico pode valer para o pt) e a versão
+  /// citada; nulos nas traduções automáticas, que estão sempre no idioma da tradução.
+  evidenceLanguage String? @db.VarChar(2)
+  contextLanguage  String? @db.VarChar(2)
+  versionTitle     String? @db.VarChar(300)
+  license          String? @db.VarChar(80)
+  /// sha256 da pergunta original no momento da tradução.
+  sourceHash    String   @db.VarChar(64)
+  provider      String   @db.VarChar(40)
+  model         String   @db.VarChar(120)
+  promptVersion String   @db.VarChar(40)
+  /// machine (tradução automática) ou bank (escrita junto com a pergunta, no banco).
+  status        String   @default("machine") @db.VarChar(10)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, locale])
+  @@index([locale])
+}
+
+// ---------------------------------------------------------------------------
+// Economia (Fase 9)
+// ---------------------------------------------------------------------------
+
+/// coins = moedas de sabedoria (ganhas jogando); shekels = moeda comprada.
+enum Currency {
+  coins
+  shekels
+}
+
+/// Extrato da carteira: toda mudança de saldo, com motivo e saldo depois. A chave de
+/// idempotência impede entregar a mesma coisa duas vezes (compra reenviada, prêmio
+/// resgatado de novo).
+model WalletEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  currency       Currency
+  delta          Int
+  balance        Int
+  /// journey, completion, shop, offer, purchase, reward, admin…
+  reason         String   @db.VarChar(24)
+  ref            String?  @db.VarChar(80)
+  idempotencyKey String?  @unique @db.VarChar(160)
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+enum StoreName {
+  apple
+  google
+  demo
+}
+
+/// Compra verificada na App Store ou no Google Play (ou simulada, fora de produção).
+model StorePurchase {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  store         StoreName
+  productId     String    @db.VarChar(60)
+  /// Apple: transactionId; Google: orderId; demo: gerado.
+  transactionId String    @db.VarChar(120)
+  /// Apple: originalTransactionId (identifica a compra nas restaurações).
+  originalId    String?   @db.VarChar(120)
+  /// Production, Sandbox, demo…
+  environment   String?   @db.VarChar(20)
+  purchasedAt   DateTime
+  /// Reembolsada ou revogada pela loja.
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([store, transactionId])
+  @@index([userId, productId])
+}
+
+enum BoostKind {
+  time
+  skip
+  eliminate
+}
+
+/// Ajudas guardadas na mochila (só valem no Golem World).
+model UserBoost {
+  userId String    @db.Uuid
+  kind   BoostKind
+  count  Int       @default(0) @db.SmallInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, kind])
+}
+
+enum AdPlacement {
+  continue
+  double
+  wheel
+  life
+  boost
+  gift
+  moves
+}
+
+/// Oferta de anúncio com prêmio. O prêmio é decidido ao criar a oferta (e mostrado ao
+/// jogador antes); só é entregue depois que o anúncio é confirmado (watchedAt).
+model RewardTicket {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String      @db.Uuid
+  placement       AdPlacement
+  /// Fase (continue, double), rodada da roleta (wheel) ou partida do puzzle (moves). Uma oferta por lugar e referência.
+  ref             String?     @db.VarChar(80)
+  prize           Json
+  createdAt       DateTime    @default(now())
+  expiresAt       DateTime
+  watchedAt       DateTime?
+  claimedAt       DateTime?
+  /// Quem confirmou o anúncio: "admob:<transaction_id>", "client:<id>" ou "demo:<id>".
+  adTransactionId String?     @unique @db.VarChar(160)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, placement, ref])
+  @@index([userId, placement, watchedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Login social (Fase 10)
+// ---------------------------------------------------------------------------
+
+enum AuthProvider {
+  google
+  apple
+  facebook
+}
+
+/// Conta de outro serviço ligada a um jogador. Uma por serviço; a mesma conta do
+/// Google (ou da Apple, do Facebook) nunca serve a dois jogadores.
+model UserIdentity {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @db.Uuid
+  provider   AuthProvider
+  /// Id estável do usuário no serviço ("sub" do token; no Facebook, o id do app).
+  subject    String       @db.VarChar(255)
+  /// E-mail confirmado pelo serviço, quando ele informa (só referência).
+  email      String?      @db.VarChar(254)
+  createdAt  DateTime     @default(now())
+  lastUsedAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  @@unique([userId, provider])
+}
+
+// ---------------------------------------------------------------------------
+// Pedras do Choshen: o match-3 do Golem World (Fase 11)
+// ---------------------------------------------------------------------------
+
+enum PuzzleRunStatus {
+  playing
+  won
+  lost
+  abandoned
+}
+
+/// Partida do "Pedras do Choshen". O tabuleiro sai da semente (o mesmo motor no app e
+/// aqui); no fim o app manda as jogadas, o servidor refaz a partida e só então grava o
+/// resultado e dá moedas pelas estrelas novas.
+model PuzzleRun {
+  id         String          @id @default(uuid()) @db.Uuid
+  userId     String          @db.Uuid
+  level      Int             @db.SmallInt
+  seed       Int
+  status     PuzzleRunStatus @default(playing)
+  /// Jogadas a mais ganhas com anúncio (0 ou 5).
+  extraMoves Int             @default(0) @db.SmallInt
+  score      Int             @default(0)
+  stars      Int             @default(0) @db.SmallInt
+  movesUsed  Int             @default(0) @db.SmallInt
+  coins      Int             @default(0)
+  startedAt  DateTime        @default(now())
+  endedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, level, stars])
+  @@index([userId, status])
+}

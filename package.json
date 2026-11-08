@@ -1,0 +1,38 @@
+{
+  "name": "trivia-torah",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quiz mobile no estilo Perguntados sobre literatura judaica, com perguntas geradas por IA a partir do acervo aberto do Sefaria.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": "^22.13 || ^24.3 || >=26"
+  },
+  "scripts": {
+    "postinstall": "pnpm --filter @trivia/shared build",
+    "secrets:init": "node scripts/secrets-init.mjs",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "pnpm --filter @trivia/db generate",
+    "db:migrate": "pnpm --filter @trivia/db migrate",
+    "db:deploy": "pnpm --filter @trivia/db deploy",
+    "db:studio": "pnpm --filter @trivia/db studio",
+    "pipeline": "pnpm --filter @trivia/pipeline cli",
+    "api:dev": "pnpm --filter @trivia/api dev",
+    "api:start": "pnpm --filter @trivia/api start",
+    "reviewers": "pnpm --filter @trivia/api reviewers",
+    "mobile": "pnpm --filter @trivia/mobile start",
+    "mobile:web": "pnpm --filter @trivia/mobile web",
+    "lan": "node scripts/lan.mjs",
+    "lan:godot": "node scripts/lan.mjs --godot",
+    "android:godot": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "~7.0.2",
+    "uqr": "^0.1.3",
+    "vitest": "^5.1.0"
+  }
+}

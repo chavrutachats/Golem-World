@@ -1,0 +1,21 @@
+{
+ "title": "Mishnah Berakhot",
+ "heTitle": "משנה ברכות",
+ "categories": [
+  "Mishnah",
+  "Seder Zeraim"
+ ],
+ "schema": {
+  "nodeType": "JaggedArrayNode",
+  "depth": 2,
+  "addressTypes": [
+   "Perek",
+   "Mishnah"
+  ],
+  "sectionNames": [
+   "Chapter",
+   "Mishnah"
+  ],
+  "key": "Mishnah Berakhot"
+ }
+}

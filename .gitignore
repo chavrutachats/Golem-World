@@ -1,0 +1,33 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+
+# Prisma client gerado
+packages/db/src/generated/
+
+# Dados baixados pelo pipeline (clone do Sefaria-Export, saídas intermediárias)
+data/
+pipeline/out/
+
+# Expo / React Native
+.expo/
+apps/mobile/ios/
+apps/mobile/android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# SO / editores
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+apps/mobile/scripts/out/

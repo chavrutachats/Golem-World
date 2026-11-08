@@ -1,0 +1,4 @@
+.godot/
+build/
+# Endereço da API gravado pelo script de exportação Android (IP da rede de casa).
+server.cfg

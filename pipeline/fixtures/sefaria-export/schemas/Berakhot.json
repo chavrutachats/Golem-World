@@ -1,0 +1,22 @@
+{
+ "title": "Berakhot",
+ "heTitle": "ברכות",
+ "categories": [
+  "Talmud",
+  "Bavli",
+  "Seder Zeraim"
+ ],
+ "schema": {
+  "nodeType": "JaggedArrayNode",
+  "depth": 2,
+  "addressTypes": [
+   "Talmud",
+   "Integer"
+  ],
+  "sectionNames": [
+   "Daf",
+   "Line"
+  ],
+  "key": "Berakhot"
+ }
+}

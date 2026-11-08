@@ -1,0 +1,21 @@
+{
+ "title": "Genesis",
+ "heTitle": "בראשית",
+ "categories": [
+  "Tanakh",
+  "Torah"
+ ],
+ "schema": {
+  "nodeType": "JaggedArrayNode",
+  "depth": 2,
+  "addressTypes": [
+   "Perek",
+   "Pasuk"
+  ],
+  "sectionNames": [
+   "Chapter",
+   "Verse"
+  ],
+  "key": "Genesis"
+ }
+}

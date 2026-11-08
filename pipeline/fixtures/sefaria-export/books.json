@@ -1,0 +1,110 @@
+{
+ "generated_at": "2026-10-02T06:06:29Z",
+ "base_url": "https://storage.googleapis.com/sefaria-export",
+ "books": [
+  {
+   "title": "Berakhot",
+   "language": "English",
+   "versionTitle": "Tractate Berakot by A. Cohen, Cambridge University Press, 1921",
+   "categories": [
+    "Talmud",
+    "Bavli",
+    "Seder Zeraim"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Talmud/Bavli/Seder%20Zeraim/Berakhot/English/Tractate%20Berakot%20by%20A.%20Cohen%2C%20Cambridge%20University%20Press%2C%201921.json"
+  },
+  {
+   "title": "Berakhot",
+   "language": "Hebrew",
+   "versionTitle": "Wikisource Talmud Bavli",
+   "categories": [
+    "Talmud",
+    "Bavli",
+    "Seder Zeraim"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Talmud/Bavli/Seder%20Zeraim/Berakhot/Hebrew/Wikisource%20Talmud%20Bavli.json"
+  },
+  {
+   "title": "Genesis",
+   "language": "English",
+   "versionTitle": "The Holy Scriptures A New Translation JPS 1917",
+   "categories": [
+    "Tanakh",
+    "Torah"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Tanakh/Torah/Genesis/English/The%20Holy%20Scriptures%20A%20New%20Translation%20JPS%201917.json"
+  },
+  {
+   "title": "Genesis",
+   "language": "English",
+   "versionTitle": "Tradução de teste [pt]",
+   "categories": [
+    "Tanakh",
+    "Torah"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Tanakh/Torah/Genesis/English/Tradu%C3%A7%C3%A3o%20de%20teste%20%5Bpt%5D.json"
+  },
+  {
+   "title": "Genesis",
+   "language": "English",
+   "versionTitle": "Versão NC de teste [pt]",
+   "categories": [
+    "Tanakh",
+    "Torah"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Tanakh/Torah/Genesis/English/Vers%C3%A3o%20NC%20de%20teste%20%5Bpt%5D.json"
+  },
+  {
+   "title": "Genesis",
+   "language": "Hebrew",
+   "versionTitle": "Miqra according to the Masorah",
+   "categories": [
+    "Tanakh",
+    "Torah"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Tanakh/Torah/Genesis/Hebrew/Miqra%20according%20to%20the%20Masorah.json"
+  },
+  {
+   "title": "Genesis",
+   "language": "Hebrew",
+   "versionTitle": "Tanach with Ta'amei Hamikra",
+   "categories": [
+    "Tanakh",
+    "Torah"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Tanakh/Torah/Genesis/Hebrew/Tanach%20with%20Ta%27amei%20Hamikra.json"
+  },
+  {
+   "title": "Mishnah Berakhot",
+   "language": "English",
+   "versionTitle": "Mishnah Yomit by Dr. Joshua Kulp",
+   "categories": [
+    "Mishnah",
+    "Seder Zeraim"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Mishnah/Seder%20Zeraim/Mishnah%20Berakhot/English/Mishnah%20Yomit%20by%20Dr.%20Joshua%20Kulp.json"
+  },
+  {
+   "title": "Mishnah Berakhot",
+   "language": "Hebrew",
+   "versionTitle": "Torat Emet 357",
+   "categories": [
+    "Mishnah",
+    "Seder Zeraim"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/Mishnah/Seder%20Zeraim/Mishnah%20Berakhot/Hebrew/Torat%20Emet%20357.json"
+  },
+  {
+   "title": "Rashi on Genesis",
+   "language": "English",
+   "versionTitle": "Pentateuch with Rashi",
+   "categories": [
+    "Tanakh",
+    "Rishonim on Tanakh",
+    "Rashi",
+    "Torah"
+   ],
+   "json_url": "https://storage.googleapis.com/sefaria-export/json/x.json"
+  }
+ ]
+}

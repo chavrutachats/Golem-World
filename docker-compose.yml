@@ -1,0 +1,27 @@
+# Banco de dados para desenvolvimento local.
+# Uso: `pnpm db:up` (sobe) e `pnpm db:down` (derruba). Os dados ficam no volume `pgdata`.
+#
+# A porta fica presa ao 127.0.0.1: só este computador alcança o banco. Sem isso, qualquer
+# pessoa na mesma rede Wi-Fi (o que acontece ao testar com o celular) chegaria ao Postgres
+# com a senha de desenvolvimento abaixo. O celular não precisa do banco, só da API.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trivia-torah-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trivia
+      POSTGRES_PASSWORD: trivia
+      POSTGRES_DB: trivia_torah
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trivia -d trivia_torah"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

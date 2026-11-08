@@ -1,0 +1,16 @@
+{
+  "name": "Trivia Torá",
+  "short_name": "Trivia Torá",
+  "description": "Quiz e jornada de estudo pelos textos judaicos, com fontes do Sefaria.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14205C",
+  "theme_color": "#14205C",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Trivia Torá",
+    "slug": "trivia-tora",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "triviatora",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#12183D",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.triviatora.mobile"
+    },
+    "android": {
+      "package": "app.triviatora.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#12183D",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "allowBackup": false
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#12183D",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 120
+        }
+      ]
+    ]
+  }
+}

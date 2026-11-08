@@ -1,0 +1,18 @@
+packages:
+  - apps/*
+  - packages/*
+  - pipeline
+
+# Só estes pacotes podem rodar scripts de instalação (o pnpm bloqueia o resto).
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - prisma
+  - esbuild
+
+# Correções de segurança em dependências de ferramentas (veja docs/SECURITY.md).
+# O @expo/cli pede glob ^13 (GHSA-3g3m-2fjr-6pw4) e o @expo/fingerprint, minimatch ^10
+# (negação de serviço por padrões amplificados); glob 14 e minimatch 11 corrigem e
+# mantêm a mesma API. Conferido com expo export (web, Android e iOS).
+overrides:
+  glob@^13: ^14.0.3
+  minimatch@^10: ^11.0.3
